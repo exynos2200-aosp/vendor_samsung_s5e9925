@@ -14,6 +14,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - model: "SM-S901B"
+            csc: "EUX"
+            omc: "OXM"
+            imei: "353325474787540"
 
     concurrency:
       group: "update-${{ matrix.model }}-${{ matrix.csc }}"
