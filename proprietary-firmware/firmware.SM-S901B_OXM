@@ -1,0 +1,18 @@
+# Firmware for model SM-S901B - from Samsung package version S901BXXSGFYG1
+
+fld.bin_SM-S901B|49b3e717e0786d24bb3df4d51c6bb423295d779c
+harx.bin_SM-S901B|0cf0547dfba3e4eb37506d6e95c7fc28ac22ad98
+keystorage.bin_SM-S901B|425ba43327bfd788c88b5a5732e24616f99257ee
+ldfw.img_SM-S901B|e115db4dc1ecf621a8cba63eb650e0845ded6a1a
+modem.bin_SM-S901B|8c9538292d9b19d408c37d9459251f8b3d649cda
+modem_debug.bin_SM-S901B|907a1e33c8969082c9f744a076f244cff67506b0
+sboot.bin_SM-S901B|d2b97c9d5261bed7311713b41f7229e6e43caa68
+ssp.img_SM-S901B|4dc4bb758a9ff5d7278d808c95812ea960197479
+tzar.img_SM-S901B|f879436a7ea8c72ecd8e085202b12ca8371b4cb3
+tzsw.img_SM-S901B|f4f08b4676940b0d1dbd79471639a23fee373615
+uh.bin_SM-S901B|acc0156948a2864fa72ca9e8cce5df11d3927b3e
+up_param.bin_SM-S901B|4a1355499d01c252a7faa66d47c510318e5a333f
+vbmeta.img_SM-S901B|a8a3334a625f674239b374f9ffae0b2e96595211
+
+# Files containing Samsung package version for supported models
+version_SM-S901B|bd983cd2174c01108bdc437e6a7641eb83c7585d
