@@ -1,0 +1,205 @@
+name: Check firmware update
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */2 * * *"
+  push:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+
+    concurrency:
+      group: "update-${{ matrix.model }}-${{ matrix.csc }}"
+      cancel-in-progress: true
+ 
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Compare latest version with current version
+        env:
+          MODEL: ${{ matrix.model }}
+          CSC: ${{ matrix.csc }}
+          OMC: ${{ matrix.omc }}
+        run: |
+          ./scripts/compare.sh
+
+      - name: Set up Node.js
+        if: env.need_update == 1
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'latest'
+
+      - name: Install dependencies
+        if: env.need_update == 1
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y liblz4-tool zip android-sdk-libsparse-utils f2fs-tools linux-modules-extra-$(uname -r)
+          sudo wget -O /usr/bin/samfirm https://github.com/DavidArsene/samfirm.js/releases/download/v0.3.0/samfirm.js && sudo chmod +x /usr/bin/samfirm
+          sudo modprobe f2fs
+
+      - name: Fetch firmware
+        if: env.need_update == 1
+        run: |
+          samfirm -m ${{ matrix.model }} -r ${{ matrix.csc }} -i ${{ matrix.imei }}
+
+      - name: Get path of files
+        if: env.need_update == 1
+        run: |
+          ./scripts/get_path.sh
+
+      - name: Check downloaded firmware version
+        if: env.need_update == 1
+        env:
+          AP_TAR: ${{ env.ap_tar }}
+          CSC_TAR: ${{ env.csc_tar }}
+          CP_TAR: ${{ env.cp_tar }}
+          LATEST_SHORTVERSION: ${{ env.latest_shortversion }}
+          LATEST_CSCVERSION: ${{ env.latest_cscversion }}
+          LATEST_MODEMVERSION: ${{ env.latest_modemversion }}
+        run: |
+          ./scripts/check.sh
+
+      - name: Cleanup space
+        if: env.need_update == 1
+        run: |
+          sudo apt-get remove --purge -y "php*" "dotnet*" "mysql*" "nodejs*" "clang*" "google*"
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          sudo rm -rf /usr/local
+
+      - name: Extract kernel images
+        if: env.need_update == 1
+        env:
+          AP_TAR: ${{ env.ap_tar }}
+          LATEST_SHORTVERSION: ${{ env.latest_shortversion }}
+        run: |
+          ./scripts/kernel.sh
+
+      - name: Extract PIT file
+        if: env.need_update == 1
+        run: |
+          tar --wildcards --exclude='*/*' -xvf ${{ env.csc_tar }} '*.pit'
+          echo "pit_file=`find -name *.pit`" >> $GITHUB_ENV
+
+      - name: Generate patched vbmeta
+        if: env.need_update == 1
+        env:
+          AP_TAR: ${{ env.ap_tar }}
+          LATEST_SHORTVERSION: ${{ env.latest_shortversion }}
+        run: |
+          ./scripts/vbmeta.sh
+
+      - name: Extract vendor partition
+        if: env.need_update == 1
+        env:
+          MODEL: ${{ matrix.model }}
+          AP_TAR: ${{ env.ap_tar }}
+          LATEST_SHORTVERSION: ${{ env.latest_shortversion }}
+        run: |
+          ./scripts/vendor.sh
+
+      - name: Get tee blobs
+        if: env.need_update == 1
+        env:
+          LATEST_SHORTVERSION: ${{ env.latest_shortversion }}
+        run: |
+          ./scripts/tee.sh
+           
+      - name: Get firmware blobs
+        if: env.need_update == 1
+        env:
+          LATEST_SHORTVERSION: ${{ env.latest_shortversion }}
+        run: |
+          ./scripts/fw_blobs.sh
+
+      - name: Generate proprietary-files.txt
+        if: env.need_update == 1
+        env:
+          MODEL: ${{ matrix.model }}
+          OMC: ${{ matrix.omc }}
+          LATEST_SHORTVERSION: ${{ env.latest_shortversion }}
+        run: |
+          ./scripts/proprietary-files.sh
+
+      - name: Generate proprietary-firmware.txt
+        if: env.need_update == 1
+        env:
+          MODEL: ${{ matrix.model }}
+          OMC: ${{ matrix.omc }}
+          LATEST_SHORTVERSION: ${{ env.latest_shortversion }}
+          BL_TAR: ${{ env.bl_tar }}
+          CP_TAR: ${{ env.cp_tar }}
+        run: |
+          ./scripts/proprietary-firmware.sh
+
+      - name: Generate file_context
+        if: env.need_update == 1
+        env:
+          MODEL: ${{ matrix.model }}
+          OMC: ${{ matrix.omc }}
+        run: |
+          ./scripts/file_context.sh
+      
+      - name: Generate fs_config
+        if: env.need_update == 1
+        env:
+          MODEL: ${{ matrix.model }}
+          OMC: ${{ matrix.omc }}
+        run: |
+          ./scripts/fs_config.sh
+
+      - name: Unmount vendor
+        if: env.need_update == 1
+        run: |
+           sudo umount vendor/mount
+           rm -rf vendor*
+
+      - name: Update current version
+        if: env.need_update == 1
+        env:
+          MODEL: ${{ matrix.model }}
+          OMC: ${{ matrix.omc }}
+          LATEST_VERSION: ${{ env.latest_version }}
+          LATEST_SHORTVERSION: ${{ env.latest_shortversion }}
+          GHF: ${{ github.ref }}
+        run: |
+         ./scripts/update.sh
+
+      - name: Push changes to repo
+        if: env.need_update == 1
+        uses: ad-m/github-push-action@master
+        with:
+          tags: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release assets
+        if: env.need_update == 1
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          body_path: versions.txt
+          tag_name: "${{ env.latest_shortversion }}_${{ matrix.omc }}"
+          name: "${{ env.latest_shortversion }} - ${{ matrix.model }} - ${{ matrix.omc }}"
+          files: |
+            ${{ env.bl_tar }}
+            ${{ env.cp_tar }}
+            ${{ env.home_csc_tar }}
+            ${{ env.latest_shortversion }}_kernel.tar
+            ${{ env.pit_file }}
+            ${{ env.latest_shortversion }}_patched_vbmeta.tar
+            ${{ env.latest_shortversion }}_vendor.zip
+            ${{ env.latest_shortversion }}_vendor-extracted.zip
+            ${{ env.latest_shortversion }}_tee.zip
+            ${{ env.latest_shortversion }}_firmware.zip
+            ${{ env.latest_shortversion }}_BL_CP-los.zip
