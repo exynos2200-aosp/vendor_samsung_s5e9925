@@ -1,0 +1,5 @@
+echo "ap_tar=$(find -name AP*)" >> "$GITHUB_ENV"
+echo "bl_tar=$(find -name BL*)" >> "$GITHUB_ENV"
+echo "cp_tar=$(find -name CP*)" >> "$GITHUB_ENV"
+echo "csc_tar=$(find -name CSC*)" >> "$GITHUB_ENV"
+echo "home_csc_tar=$(find -name HOME_CSC*)" >> "$GITHUB_ENV"

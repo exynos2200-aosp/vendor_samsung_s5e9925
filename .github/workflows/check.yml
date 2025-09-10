@@ -1,0 +1,209 @@
+name: Check firmware update
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */4 * * *"
+  push:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - model: "SM-S711B"
+            csc: "EUX"
+            omc: "OXM"
+            imei: "355195302007124"
+          - model: "SM-S901B"
+            csc: "EUX"
+            omc: "OXM"
+            imei: "350330053121965"
+          - model: "SM-S906B"
+            csc: "EUX"
+            omc: "OXM"
+            imei: "353055522360541"
+          - model: "SM-S908B"
+            csc: "EUX"
+            omc: "OXM"
+            imei: "353074281716249"
+
+    concurrency:
+      group: "update-${{ matrix.model }}-${{ matrix.csc }}-${{ github.ref }}"
+      cancel-in-progress: true
+ 
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Compare latest version with current version
+        env:
+          MODEL: ${{ matrix.model }}
+          CSC: ${{ matrix.csc }}
+          OMC: ${{ matrix.omc }}
+        run: |
+          ./scripts/compare_firmware.sh
+
+      - name: Install dependencies
+        if: env.update == 1
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y liblz4-tool zip android-sdk-libsparse-utils f2fs-tools linux-modules-extra-$(uname -r) python3 python3-venv unzip
+          sudo modprobe f2fs
+
+      - name: Get firmware
+        if: env.update == 1
+        env:
+          MODEL: ${{ matrix.model }}
+          CSC: ${{ matrix.csc }}
+          IMEI: ${{ matrix.imei }}
+          SERIAL: ${{ matrix.serial }}
+        run: |
+          ./scripts/fetch_firmware.sh
+
+      - name: Get path of files
+        if: env.update == 1
+        run: |
+          ./scripts/get_path.sh
+
+      - name: Check downloaded firmware version
+        if: env.update == 1
+        env:
+          AP_TAR: ${{ env.ap_tar }}
+          CSC_TAR: ${{ env.csc_tar }}
+          CP_TAR: ${{ env.cp_tar }}
+          LATEST_SHORTVERSION: ${{ env.latest_shortversion }}
+          LATEST_CSCVERSION: ${{ env.latest_cscversion }}
+          LATEST_MODEMVERSION: ${{ env.latest_modemversion }}
+        run: |
+          ./scripts/check.sh
+
+      - name: Cleanup space
+        if: env.update == 1
+        run: |
+          sudo apt-get remove --purge -y "php*" "dotnet*" "mysql*" "nodejs*" "clang*" "google*"
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          sudo rm -rf /usr/local
+
+      - name: Extract kernel images
+        if: env.update == 1
+        env:
+          AP_TAR: ${{ env.ap_tar }}
+          LATEST_SHORTVERSION: ${{ env.latest_shortversion }}
+        run: |
+          ./scripts/kernel.sh
+
+      - name: Extract PIT file
+        if: env.update == 1
+        run: |
+          tar --wildcards --exclude='*/*' -xvf ${{ env.csc_tar }} '*.pit'
+          echo "pit_file=`find -name *.pit`" >> $GITHUB_ENV
+
+      - name: Generate patched vbmeta
+        if: env.update == 1
+        env:
+          AP_TAR: ${{ env.ap_tar }}
+          LATEST_SHORTVERSION: ${{ env.latest_shortversion }}
+        run: |
+          ./scripts/vbmeta.sh
+
+      - name: Extract vendor partition
+        if: env.update == 1
+        env:
+          MODEL: ${{ matrix.model }}
+          AP_TAR: ${{ env.ap_tar }}
+          LATEST_SHORTVERSION: ${{ env.latest_shortversion }}
+        run: |
+          ./scripts/vendor.sh
+
+      - name: Get some blobs
+        if: env.update == 1
+        env:
+          LATEST_SHORTVERSION: ${{ env.latest_shortversion }}
+        run: |
+          ./scripts/blobs.sh
+           
+      - name: Generate proprietary-files.txt
+        if: env.update == 1
+        env:
+          MODEL: ${{ matrix.model }}
+          OMC: ${{ matrix.omc }}
+          CSC: ${{ matrix.csc }}
+          LATEST_SHORTVERSION: ${{ env.latest_shortversion }}
+        run: |
+          ./scripts/proprietary-files.sh
+
+      - name: Generate proprietary-firmware.txt
+        if: env.update == 1
+        env:
+          MODEL: ${{ matrix.model }}
+          OMC: ${{ matrix.omc }}
+          CSC: ${{ matrix.csc }}
+          LATEST_SHORTVERSION: ${{ env.latest_shortversion }}
+          BL_TAR: ${{ env.bl_tar }}
+          CP_TAR: ${{ env.cp_tar }}
+        run: |
+          ./scripts/proprietary-firmware.sh
+
+      - name: Generate file_context
+        if: env.update == 1
+        env:
+          MODEL: ${{ matrix.model }}
+          CSC: ${{ matrix.csc }}
+          OMC: ${{ matrix.omc }}
+        run: |
+          ./scripts/file_context.sh
+      
+      - name: Generate fs_config
+        if: env.update == 1
+        env:
+          MODEL: ${{ matrix.model }}
+          CSC: ${{ matrix.csc }}
+          OMC: ${{ matrix.omc }}
+        run: |
+          ./scripts/fs_config.sh
+
+      - name: Update current version
+        if: env.update == 1
+        env:
+          MODEL: ${{ matrix.model }}
+          OMC: ${{ matrix.omc }}
+          CSC: ${{ matrix.csc }}
+          LATEST_VERSION: ${{ env.latest_version }}
+          LATEST_SHORTVERSION: ${{ env.latest_shortversion }}
+          GHF: ${{ github.ref }}
+        run: |
+          ./scripts/git.sh
+
+      - name: Push changes to repo
+        if: env.update == 1
+        uses: ad-m/github-push-action@master
+        with:
+          tags: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref }}
+
+      - name: Upload release assets
+        if: env.update == 1
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          body_path: versions.txt
+          tag_name: "${{ env.latest_shortversion }}_${{ matrix.csc }}_${{ matrix.omc }}"
+          name: "${{ env.latest_shortversion }} - ${{ matrix.model }} - ${{ matrix.csc }} - ${{ matrix.omc }}"
+          files: |
+            ${{ env.bl_tar }}
+            ${{ env.cp_tar }}
+            ${{ env.home_csc_tar }}
+            ${{ env.latest_shortversion }}_kernel.tar
+            ${{ env.pit_file }}
+            ${{ env.latest_shortversion }}_patched_vbmeta.tar
+            ${{ env.latest_shortversion }}_vendor.zip
+            ${{ env.latest_shortversion }}_vendor-extracted.zip
+            ${{ env.latest_shortversion }}_firmware_tee.zip
+            ${{ env.latest_shortversion }}_BL_CP-los.zip
