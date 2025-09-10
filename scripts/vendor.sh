@@ -19,5 +19,5 @@ sudo umount vendor_mount
 cp -rfa vendor/firmware/* vendor/firmware/${MODEL}
 cp -rfa vendor/tee/* vendor/tee/${MODEL}
 
-zip -r0 --store ${LATEST_SHORTVERSION}_vendor-extracted.zip vendor
+zip -r9 ${LATEST_SHORTVERSION}_vendor-extracted.zip vendor
 rm -rf vendor_mount
