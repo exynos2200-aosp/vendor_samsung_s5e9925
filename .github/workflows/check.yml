@@ -97,12 +97,6 @@ jobs:
         run: |
           ./scripts/kernel.sh
 
-      - name: Extract PIT file
-        if: env.update == 1
-        run: |
-          tar --wildcards --exclude='*/*' -xvf ${{ env.csc_tar }} '*.pit'
-          echo "pit_file=`find -name *.pit`" >> $GITHUB_ENV
-
       - name: Generate patched vbmeta
         if: env.update == 1
         env:
@@ -201,7 +195,6 @@ jobs:
             ${{ env.cp_tar }}
             ${{ env.home_csc_tar }}
             ${{ env.latest_shortversion }}_kernel.tar
-            ${{ env.pit_file }}
             ${{ env.latest_shortversion }}_patched_vbmeta.tar
             ${{ env.latest_shortversion }}_vendor.zip
             ${{ env.latest_shortversion }}_vendor-extracted.zip
